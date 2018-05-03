@@ -1,6 +1,6 @@
 {
   "name": "fin-hypergrid-grouped-header-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Hypergrid plug-in to display headers for (nested) groups of columns.",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fin-hypergrid/grouped-header-plugin.git"
+    "url": "github:fin-hypergrid/grouped-header-plugin#1.0.1"
   },
   "author": "Jonathan Eiten",
   "license": "MIT",

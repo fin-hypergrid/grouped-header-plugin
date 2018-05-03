@@ -127,12 +127,6 @@ var prototypeGroupedHeader = {
     nestedHeight: '160%',
 
     /**
-     * If truthy, rule lines are clipped to bottom of header row.
-     * @type {boolean}
-     */
-    clipRuleLines: false,
-
-    /**
      * @summary Grouped header configuration overrides.
      * @desc This array is a list of {@link groupConfigObject} objects, one for each nesting level, each of which may contain:
      * * An override for the background decorator
@@ -430,10 +424,6 @@ function paintHeaderGroups(gc, config) {
 
         // restore original column cosmetic properties for actual column header
         Object.assign(config, columnConfigStash);
-    }
-
-    if (this.clipRuleLines && prevVisCol) {
-        prevVisCol.bottom = config.bounds.y + config.bounds.height;
     }
 
     // Render the actual column header
