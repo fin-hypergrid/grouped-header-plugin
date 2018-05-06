@@ -127,6 +127,14 @@ var prototypeGroupedHeader = {
     nestedHeight: '160%',
 
     /**
+     * Controls whether or not to draw the vertical rule lines between the column headers proper (_i.e.,_ the bottom row).
+     * Setting this to false will only draw vertical rule lines between group labels.
+     * @type {boolean}
+     * @default
+     */
+    columnHeaderLines: true,
+
+    /**
      * @summary Grouped header configuration overrides.
      * @desc This array is a list of {@link groupConfigObject} objects, one for each nesting level, each of which may contain:
      * * An override for the background decorator
@@ -332,6 +340,7 @@ function paintHeaderGroups(gc, config) {
             groups = this.groups,
             rect = config.bounds,
             bounds = Object.assign({}, rect), // save bounds for final column header render and resetting
+            bottom,
 
             // save cosmetic properties for final column header render that follows this if-block
             columnConfigStash = {
@@ -343,6 +352,8 @@ function paintHeaderGroups(gc, config) {
 
         // height of each level is the same, 1/levels of total height
         rect.height /= values.length;
+
+        bottom = !this.columnHeaderLines && bounds.y + bounds.height - rect.height;
 
         // Always paint the group header background
         config.prefillColor = null;
@@ -377,6 +388,10 @@ function paintHeaderGroups(gc, config) {
                 }
             }
 
+            if (prevVisCol) {
+                prevVisCol.bottom = bottom;
+            }
+
             rect.x = group.left;
             rect.y = y;
             rect.width = group.width;
@@ -390,11 +405,6 @@ function paintHeaderGroups(gc, config) {
                 this.groupCount = groupCount;
                 // Suppress hover and selection effects for group headers
                 config.isColumnHovered = config.isSelected = false;
-
-                // Make group headers bold
-                if (config.bold && !REGEX_BOLD_PRECEDES_FONT_SIZE.test(config.font)) {
-                    config.font = 'bold ' + config.font;
-                }
 
                 // Paint the group header foreground
                 paint.call(this, gc, config);
