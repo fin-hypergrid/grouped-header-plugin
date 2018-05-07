@@ -327,6 +327,8 @@ function paintHeaderGroups(gc, config) {
         colIndex = config.dataCell.x,
         values = config.value.split(this.delimiter), // each group header including column header
         groupCount = values.length - 1, // group header levels above column header
+        rect = config.bounds,
+        bottom = rect.y + rect.height,
         prevVisCol = this.visibleColumns.find(function(visCol) {
             return visCol.columnIndex === config.gridCell.x - 1;
         });
@@ -338,9 +340,7 @@ function paintHeaderGroups(gc, config) {
     if (groupCount) { // has group headers
         var group,
             groups = this.groups,
-            rect = config.bounds,
             bounds = Object.assign({}, rect), // save bounds for final column header render and resetting
-            bottom = rect.y + rect.height,
 
             // save cosmetic properties for final column header render that follows this if-block
             columnConfigStash = {
@@ -428,6 +428,8 @@ function paintHeaderGroups(gc, config) {
 
         // restore original column cosmetic properties for actual column header
         Object.assign(config, columnConfigStash);
+    } else if (prevVisCol && !this.columnHeaderLines) {
+        prevVisCol.top = bottom;
     }
 
     // Render the actual column header
