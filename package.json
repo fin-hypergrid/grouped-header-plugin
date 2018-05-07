@@ -1,6 +1,6 @@
 {
   "name": "fin-hypergrid-grouped-header-plugin",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Hypergrid plug-in to display headers for (nested) groups of columns.",
   "main": "index.js",
   "scripts": {

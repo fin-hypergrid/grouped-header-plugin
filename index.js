@@ -340,7 +340,7 @@ function paintHeaderGroups(gc, config) {
             groups = this.groups,
             rect = config.bounds,
             bounds = Object.assign({}, rect), // save bounds for final column header render and resetting
-            bottom,
+            bottom = rect.y + rect.height,
 
             // save cosmetic properties for final column header render that follows this if-block
             columnConfigStash = {
@@ -352,8 +352,6 @@ function paintHeaderGroups(gc, config) {
 
         // height of each level is the same, 1/levels of total height
         rect.height /= values.length;
-
-        bottom = !this.columnHeaderLines && bounds.y + bounds.height - rect.height;
 
         // Always paint the group header background
         config.prefillColor = null;
@@ -384,12 +382,8 @@ function paintHeaderGroups(gc, config) {
                 group.width += config.gridLinesVWidth + bounds.width;
 
                 if (prevVisCol) {
-                    prevVisCol.top = y + rect.height;
+                    prevVisCol.top = this.columnHeaderLines || g < groupCount - 1 ? y + rect.height : bottom;
                 }
-            }
-
-            if (prevVisCol) {
-                prevVisCol.bottom = bottom;
             }
 
             rect.x = group.left;
