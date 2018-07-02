@@ -1,6 +1,6 @@
 _Compatible with Hypergrid versions 1.3.0 and later. Non-overlaid background rendering requires 2.0.2 or later._
 
-Th grouped header plug-in groups columns together by rendering hierarchical headers.
+The grouped header plug-in groups columns together by rendering hierarchical headers.
 
 For example the column headers "Birth City" and "Birth Country" could be grouped under the label "Birth Place." To do this, install the plug-in and set the headers of the two columns to both contain the group label, as follows:
 
@@ -41,13 +41,25 @@ The following is an unbalanced hierarchy:
 
 Previous versions did not correctly render unbalanced hierarchies such as the above. The problem is the calculation of the vertical space required for each nesting level. The current version (`1.2.0`) will render unbalanced hierarchies as separate hierarchies, something like this:
 
-```js
+```
 |   Birth Data   | Birth Data |
 |     Where      |            |
 | City | Country |    Year    |
 ```
 
 This is not ideal and a future version may correct this problem.
+
+### `setHeaders` override
+Note that the height of the header row needs to be preset to accommodate the grouped header hierarchy. This plug-in overrides Hypergrid's `setHeaders` function to do this for you based on the depth of the deepest hierarchy. We recommend that you use this function to set your grouped header strings:
+```js
+grid.behavior.setHeaders({
+  birthCity: 'Birth Place|City',
+  birthCountry: 'Birth Place|Country'
+}
+```
+
+### Grid properties
+This plug-in works best with `grid.properties.headerTextWrapping = false` (which is the default).
 
 ### Installation
 The plug-in is installed in the usual way. That is, either at grid instantiation in the `plugins` option or soon thereafter using `grid.installPlugins(pluginList)`, where `pluginsList` is a list of plug-in specs to add to the grid. For example:
@@ -81,7 +93,7 @@ groupedHeader.delimiter = '~';
 ```
 
 ### Plug-in properties
-This plug-in has the following properties. As mentioned above, these are actually properties of the cell rendererer. The values of these properties which may be overridden as described above.
+This plug-in has the following properties. As mentioned above, these are actually properties of the cell rendererer. The values of these properties may be overridden as described above.
 
 #### `delimiter`
 _Default:_ `'|'`
@@ -93,8 +105,8 @@ This is the character that appears between the group levels in column header str
 An additional renderer to paint a background behind — or to overlay a foreground on top of — the group labels.
 
 This is called by the cell renderer to:
-* If the function has a truthy `overlay` property: The superclass's paint function is called to paint the background (as needed) and the foreground _after which_ this paint function is called to paint an overlay on top of it. Used by `decorateBackgroundWithBottomBorder` to paint an bottom border.
-* Otherwise called to paint the background _before_ it calls the superclass's paint function to paint the foreground.  Used by `decorateBackgroundWithLinearGradient` to paint an gradient behind the group label.
+* _If the function has a truthy `overlay` property:_ The superclass's paint function is called to paint the background (as needed) and the foreground _after which_ this paint function is called to paint an overlay on top of it. Used by `decorateBackgroundWithBottomBorder` to paint a bottom border.
+* _Otherwise:_ Called to paint the background _before_ it calls the superclass's paint function to paint the foreground.  Used by `decorateBackgroundWithLinearGradient` to paint a gradient behind the group label.
 
 In the latter case, `config.prefillColor` is set to `config.backgroundColor` before calling. This signals the superclass's paint function not to paint its own background. Therefore this will only work correctly if the superclass's paint function respects `config.prefillColor` (as does the `SimpleCell` cell renderer's paint function).
 
@@ -121,10 +133,12 @@ _Default:_ `true`
 
 Column headers are included in column autosizing calculations. When this property is truthy, the plug-in runs an algorithm to include group label width in the calculations as well. Setting `autosizeGroups` to falsy will result in group labels being truncated if the sum of the widths of the columns under it are not wide enough to accommodate it fully. This algorithm gives a generally acceptable result, adding width to columns as needed to reveal the entire group label. Be warned however that the algorithm does not consider the width of the data, which may result in some columns being wider than necessary.
 
+ Note that for any autosizing to work, make sure `grid.properties.columnAutosizing = true` (which is the default).
+
 #### `groupConfig`
 _Default:_ (See the code.)
 
-This property is an array of configuartion override objects to be applied per grouping level. The overrides are applied to the `config` object handed to the cell renderer. Each element of the array is applied to each successively deeper grouping level. Note that these values have the potential to override _just for the current nesting level_ the other properties described above.
+This property is an array of configuartion override objects to be applied per grouping level. The overrides are applied to the `config` object handed to the cell renderer. Each element of the array is applied to each successively deeper grouping level.
 
 It is applied only to the group labels and _not_ to the column header proper (the final, "leaf" node of the hierarchy, such as "City" in the examples above).
 
@@ -142,7 +156,7 @@ When a property value is a function, the value is the return value of the functi
 The array is dereferenced "modulo" meaning that if there are fewer elements than there are grouping levels, the list "wraps around." The typical use case for this feature would be a single-element array applied to all levels.
 
 #### Custom properties
-Custom properties can be added for use by a `paintBackground` function. For example, the included `decorateBackgroundWithLinearGradient` function gets its list of gradient stops from a custom `gradientStops` property. For example, to fade The default list which fades the background from the background color at the bottom of the label's rectangle to white at the top:
+Custom plug-in properties as well as custom `groupConfig[i]` properties can be added for use by a `paintBackground` function. For example, the included `decorateBackgroundWithLinearGradient` function gets its list of gradient stops from a custom `groupConfg[i].gradientStops` property. For example, the default list fades the background from the background color at the bottom of the label's rectangle to white at the top:
 ```js
         gradientStops: function(gc, config) {
             return [
@@ -153,4 +167,4 @@ Custom properties can be added for use by a `paintBackground` function. For exam
 ```
 (The only reason this is a function rather than a literal is for access to `this` and `config` at run-time.)
 
-Note that `this.backgroundColor` refers to another custom property to be used when defined rather than `config.backgroundColor` (which is often white so not useful here).
+Note that `this.backgroundColor` refers to another custom property to be used (when defined) rather than `config.backgroundColor` (often white, so not so useful here).

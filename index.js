@@ -234,7 +234,7 @@ function installPlugin(grid, options) {
     // 4. Extend the behavior's `isColumnReorderable` method.
     grid.behavior.isColumnReorderable = isColumnReorderable;
 
-    // 5. Set the data model's `groupHeaderDelimiter` property
+    // 5. Set the data model's `groupHeaderDelimiter` property (for placement of sort direction indicator)
     grid.behavior.dataModel.groupHeaderDelimiter = cellRenderer.delimiter;
 }
 
