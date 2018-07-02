@@ -106,33 +106,42 @@ var prototypeGroupedHeader = {
      *
      * If the value is a string that ends with a `%` char, it is applied as a factor to the font size to get row height.
      * Otherwise it is assumed to be an integer row height.
-     * In either case, the value is clamped to a minimum equal to 125% of the font size.
+     * In either case, the value is clamped to a minimum of 125% of the font size.
      * @type {string|number}
      * @default
      */
     flatHeight: '250%',
 
     /**
-     * Height of each nested row in a grouped header.
+     * Height of each nested group label within a grouped header.
      *
      * The total header height therefore is this amount multiplied by the header group with the deepest nesting level.
-     * (For header groups with fewer levels, the height of each level will actually be taller because they expand to fill the total header height.)
      *
      * If the value is a string that ends with a `%` char, it is applied as a factor to the font size to get row height.
      * Otherwise it is assumed to be an integer row height.
-     * In either case, the value is clamped to a minimum equal to 125% of the font size.
+     * In either case, the value is clamped to a minimum of 125% of the font size.
      * @type {string|number}
      * @default
      */
     nestedHeight: '160%',
 
     /**
-     * Controls whether or not to draw the vertical rule lines between the column headers proper (_i.e.,_ the bottom row).
+     * Controls whether or not to draw the vertical rule lines between the column headers proper (_i.e.,_ the bottom row, _e.g.,_ the "leaf nodes" in a pivot).
      * Setting this to false will only draw vertical rule lines between group labels.
+     * @todo Unimplemented. (Hypergrid knows how to render this use case when vc[i].bottom set to top of bottom row -- but this plugin does not currently set it.)
      * @type {boolean}
      * @default
      */
     columnHeaderLines: true,
+
+    /**
+     * Include group label widths in calculation of column width "autosizing." Otherwise just the column headers proper (_i.e.,_ the bottom row, _e.g.,_ the "leaf nodes" in a pivot) are considered and the group labels may be truncated.
+     *
+     * Note that this property is effective when grid property `config.headerTextWrapping` is falsy and only useful when grid property `config.columnAutosizing` is truthy.
+     * @type {boolean}
+     * @default
+     */
+    autosizeGroups: true,
 
     /**
      * @summary Grouped header configuration overrides.
@@ -159,29 +168,18 @@ var prototypeGroupedHeader = {
 
         halign: 'center',
 
-        thickness: undefined, // used only by decorateBackgroundWithBottomBorder
-
-        color: function(gc, config) {
-            var color = config.color;
-            switch (this.paintBackground) {
-                case decorateBackgroundWithBottomBorder:
-                case decorateBackgroundWithLinearGradient:
-                    color = lighterColor(gc, config.color, 0.5);
-            }
-            return color;
-        },
+        thickness: 1, // used only by decorateBackgroundWithBottomBorder
 
         gradientStops: function(gc, config) { // used only by decorateBackgroundWithLinearGradient
+            var bgcolor = this.backgroundColor || config.backgroundColor;
             return [
-                [0, lighterColor(gc, config.color, 0.5, 0)],
-                [1, lighterColor(gc, config.color, 0.5, .35)]
+                [0, 'white'], // top
+                [1, this.backgroundColor || config.backgroundColor]  // bottom
             ];
         }
 
     }]
 };
-
-var REGEX_BOLD_PRECEDES_FONT_SIZE = /\bbold .* \d/;
 
 /**
  * @summary Mix in the code necessary to support grouped column headers.
@@ -319,142 +317,189 @@ function isColumnReorderable() {
  * @desc This function is called by the Hypergrid renderer on every grid render, once for each column header from left to right.
  * Should be set on (and only on) all header cells — regardless of whether or not the header is part of a column group.
  * (See {@link groupedHeader.setHeaders} which does this for you.)
+ *
+ * ### Column Autosizing
+ * Autosizing is performed by the renderer as it measures the rendered with of cell content, including the header cells. The original implementation (<= `1.1.2`) only considered the column headers proper (_i.e.,_ the bottom row, _e.g.,_ the "leaf nodes" in a pivot) in calculating the column width, which had the potential to truncate lengthy group labels that exceeded the sum of the column widths.
+ *
+ * As of `1.2.0,` if the new plugin property `this.autosizeGroups` is truthy _and_ `config.headerTextWrapping` is falsy, columns will be autosized to prevent truncation of group labels. The algorithm to accomplish this is complicated. First we build a lists of max widths for each level of grouping and for the columns as well.
+ *
+ * We do and re-do the above on each successive column, just as we do and re-do the group label renderering, because we cannot tell what's coming up and therefore cannot tell for certain when a column group ends. The resulting widths are set for all the preceding columns in the group.
+ *
  * @implements paintFunction
  * @memberOf groupedHeader
  */
 function paintHeaderGroups(gc, config) {
     var paint = this.super.paint,
-        colIndex = config.dataCell.x,
+        columnIndex = config.gridCell.x,
         values = config.value.split(this.delimiter), // each group header including column header
-        groupCount = values.length - 1, // group header levels above column header
+        groupCount = values.length, // group header levels above column header
         rect = config.bounds,
-        bottom = rect.y + rect.height,
+        bounds = Object.assign({}, rect), // save bounds for final column header render and resetting
         prevVisCol = this.visibleColumns.find(function(visCol) {
-            return visCol.columnIndex === config.gridCell.x - 1;
+            return visCol.columnIndex === columnIndex - 1;
         });
 
-    if (groupCount === 0 || colIndex === 0) { // no group headers OR first column
-        this.groups = []; // start out with no groups defined
-    }
+    this.tree = this.tree || {};
 
-    if (groupCount) { // has group headers
-        var group,
-            groups = this.groups,
-            bounds = Object.assign({}, rect), // save bounds for final column header render and resetting
+    // Always paint the group header background as we may be repainting it with increasing widths
+    config.prefillColor = null;
 
-            // save cosmetic properties for final column header render that follows this if-block
-            columnConfigStash = {
-                isColumnHovered: config.isColumnHovered,
-                isSelected: config.isSelected,
-                font: config.font,
-                backgroundColor: config.backgroundColor
-            };
+    // height of each level is the same, 1/levels of total height
+    rect.height /= groupCount;
 
-        // height of each level is the same, 1/levels of total height
-        rect.height /= values.length;
-
-        // Always paint the group header background
-        config.prefillColor = null;
-
-        for (var g = 0, y = rect.y; g < groupCount; g++, y += rect.height) {
-            if (!groups[g] || values[g] !== groups[g].value) {
-                // Level has changed so reset left position (group[g] as on the renderer and persists between calls)
-                group = groups[g] = groups[g] || {};
-                group.value = values[g];
-                group.left = bounds.x;
-                group.width = bounds.width;
-
-                // save cosmetic properties for final column header render that follows this if-block
-                group.configStash = {
-                    font: config.font,
-                    backgroundColor: config.backgroundColor
+    // first build a tree (this.tree) representing the group nesting so far
+    for (var g = 0, y = rect.y, node = this.tree, children; g < groupCount; g++, y += rect.height, children = node.children) {
+        var value = values[g];
+        var widen = false;
+        if (g === 0) {
+            if (
+                columnIndex === 0 ||
+                groupCount === 1 ||
+                this.groupCount !== groupCount ||
+                this.tree.value !== value
+            ) {
+                node = this.tree = {
+                    value: value,
+                    children: [],
+                    left: bounds.x,
+                    width: bounds.width
                 };
-
-                // Stash config values that will be overridden and save overrides in `group` from config of first column in group
-                var gcfg = this.groupConfig;
-                if (Array.isArray(gcfg) && gcfg.length) {
-                    group.config = gcfg[g % gcfg.length]; // wrap if not enough elements
-                    Object.keys(group.config).forEach(stash, this);
-                }
             } else {
-                // Continuation of same group level, so just repaint but with increased width
-                group = groups[g];
-                group.width += config.gridLinesVWidth + bounds.width;
-
-                if (prevVisCol) {
-                    prevVisCol.top = this.columnHeaderLines || g < groupCount - 1 ? y + rect.height : bottom;
-                }
+                widen = true;
             }
-
-            rect.x = group.left;
-            rect.y = y;
-            rect.width = group.width;
-
-            // Copy `group` members saved above from `group.config` to `config`
-            Object.assign(config, group);
-
-            if (group.value) {
-                // Decorate the group header background
-                this.groupIndex = g;
-                this.groupCount = groupCount;
-                // Suppress hover and selection effects for group headers
-                config.isColumnHovered = config.isSelected = false;
-
-                // Paint the group header foreground
-                paint.call(this, gc, config);
-
-                var decorator = config.paintBackground || this.paintBackground;
-                if (decorator) {
-                    if (typeof decorator !== 'function') {
-                        decorator = groupedHeader[decorator];
-                        if (typeof decorator !== 'function') {
-                            throw 'Expected decorator function or name of registered decorator function.';
-                        }
-                    }
-                    decorator.call(this, gc, config);
-                }
-            }
-
-            // Restore `config`
-            Object.assign(config, group.configStash);
+        } else if ( // subgroup the same?
+            g < groupCount - 1 && // is this subgroup level not the leaf level?
+            (node = children[children.length - 1]) && // and did the previous column already create a subgroup at this level?
+            node.value === value // and does it have same label as this column's?
+        ) {
+            widen = true; // same label, so just widen it
+        } else if (g !== 0) {
+            node = {
+                value: value,
+                children: [],
+                left: bounds.x,
+                width: bounds.width
+            };
+            children.push(node);
         }
 
-        // Restore bounds for final column header render.
-        // Note that `y` and `height` have been altered from their original values.
-        rect.x = bounds.x;
-        rect.y = y;
-        rect.width = bounds.width;
-        config.value = values[g]; // low-order header
+        if (widen) {
+            node.width += config.gridLinesVWidth + bounds.width;
+            if (prevVisCol) {
+                prevVisCol.top = y + rect.height;
+            }
+        }
 
-        // restore original column cosmetic properties for actual column header
-        Object.assign(config, columnConfigStash);
-    } else if (prevVisCol && !this.columnHeaderLines) {
-        prevVisCol.top = bottom;
+        if (g < groupCount - 1) {
+            // Always paint the group header background
+            config.prefillColor = null;
+        }
     }
 
-    // Render the actual column header
-    paint.call(this, gc, config);
+    // walk down the right-most branch and render each level (re-rendering previously rendered group labels but wider this time)
+    for (g = 0, node = this.tree; g < groupCount; g++, rect.y += rect.height, node = node.children[node.children.length - 1]) {
+
+        rect.x = node.left;
+        rect.width = node.width;
+
+        var stash = {
+                isColumnHovered: config.isColumnHovered,
+                isSelected: config.isSelected
+            },
+            gcfg = this.groupConfig,
+            len = gcfg && gcfg.length,
+            isGroupLabel = g < groupCount - 1;
+
+        if (isGroupLabel) {
+            // Suppress hover and selection effects for group headers
+            config.isColumnHovered = config.isSelected = false;
+
+            if (len) {
+                gcfg = gcfg[g % len]; // wrap if not enough elements
+                Object.keys(gcfg).forEach(stasher, this);
+            }
+
+            var paintBackground = config.paintBackground || this.paintBackground;
+            if (paintBackground) {
+                if (typeof paintBackground !== 'function') {
+                    paintBackground = groupedHeader[paintBackground];
+                }
+                if (typeof paintBackground !== 'function') {
+                    throw 'Expected background paint function or name of registered background paint function.';
+                }
+                if (!paintBackground.overlay) {
+                    config.prefillColor = config.backgroundColor;
+                    paintBackground.call(this, gc, config);
+                }
+            }
+        }
+
+        config.value = node.value;
+        paint.call(this, gc, config);
+        node.minWidth = config.minWidth;
+        node.columnIndex = config.dataCell.x;
+
+        if (isGroupLabel) {
+            if (paintBackground && paintBackground.overlay) {
+                paintBackground.call(this, gc, config);
+            }
+            Object.assign(config, stash);
+        }
+    }
+
+    // if we're autosizing all group levels, walk the tree summing each subgroup and noting columns that need to be wider
+    if (this.autosizeGroups) {
+        var minWidths = []; // after walk, will contain (sparse) array of columns that need to be wider
+        walk(minWidths, this.tree);
+        minWidths.forEach(function(minWidth, i) {
+            if (i < columnIndex) {
+                // reset preferred width of previous columns
+                config.grid.behavior.getColumn(i).properties.preferredWidth = minWidth;
+            } else {
+                config.minWidth = minWidth;
+            }
+        });
+    }
+
+    this.groupCount = groupCount; // todo could go at bottom
 
     // Restore to original shape for next render
-    if (groupCount) {
-        Object.assign(rect, bounds);
-    }
+    Object.assign(rect, bounds);
 
-    function stash(key) { // iteratee function for iterating over `group.config`
-        if (key in config) {
-            if (key in group.configStash) {
-                config[key] = group.configStash[key];
-            } else {
-                group.configStash[key] = config[key];
-            }
-        }
-        var property = group.config[key];
+    function stasher(key) {
+        stash[key] = config[key];
+        var property = gcfg[key];
         if (key !== 'paintBackground' && typeof property === 'function') {
             property = property.call(this, gc, config);
         }
-        group[key] = property;
+        config[key] = property;
     }
 }
+
+function walk(minWidths, node) {
+    var minWidth = Math.max(node.minWidth, node.children.reduce(function(sum, child) {
+            return sum + (child.children.length ? Math.max(child.minWidth, walk(minWidths, child)) : child.minWidth);
+        }, 0)),
+        avg = minWidth / node.children.length,
+        nonadjustables = node.children.filter(function(child) {
+            return !child.children.length && child.minWidth >= avg;
+        }),
+        nonadjWidthSum = nonadjustables.reduce(function(sum, child) {
+            return sum + child.minWidth;
+        }, 0),
+        adjustables = node.children.filter(function(child) {
+            return !child.children.length && child.minWidth < avg;
+        }),
+        adjWidthSum = minWidth - nonadjWidthSum;
+
+    adjustables.forEach(function(child) {
+        minWidths[child.columnIndex] = adjWidthSum / adjustables.length;
+    });
+
+    return minWidth;
+}
+
+var regexRGBA = /^rgba|^transparent$/;
 
 /**
  * @summary Draw vertical gradient behind group label.
@@ -477,15 +522,21 @@ function paintHeaderGroups(gc, config) {
  * @memberOf groupedHeader
  */
 function decorateBackgroundWithLinearGradient(gc, config) {
-    var bounds = config.bounds,
+    var isTransparent,
+        bounds = config.bounds,
         grad = gc.createLinearGradient(bounds.x, bounds.y, bounds.x, bounds.y + bounds.height);
 
     (config.gradientStops || this.gradientStops).forEach(function(stop) {
+        isTransparent = isTransparent || regexRGBA.test(stop);
         grad.addColorStop.apply(grad, stop);
     });
 
+    if (isTransparent) {
+        gc.clearRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    }
+
     gc.cache.fillStyle = grad;
-    gc.fillRect(bounds.x + 2, bounds.y, bounds.width - 3, bounds.height);
+    gc.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
 }
 
 /**
@@ -516,64 +567,16 @@ function decorateBackgroundWithBottomBorder(gc, config) {
         thickness = config.thickness ||
             this.groupCount - this.groupIndex; // when `thickness` undefined, higher-order groups get progressively thicker borders
 
-    gc.cache.fillStyle = config.color;
-    gc.fillRect(bounds.x + 3, bounds.y + bounds.height - thickness, bounds.width - 6, thickness);
+    gc.cache.fillStyle = config.gridLinesVColor;
+    gc.fillRect(bounds.x, bounds.y + bounds.height - thickness, bounds.width, thickness);
 }
 
-// regexRGB - parses #rrggbb or rgb(r, g, b) or rgba(r, g, b, a)
-var regexRGB = /(^#([0-9a-f]{2,2})([0-9a-f]{2,2})([0-9a-f]{2,2})|rgba\((\d+),\s*(\d+),\s*(\d+),\s*([.\d]+)\))$/i;
+decorateBackgroundWithBottomBorder.overlay = true;
 
-function lighterColor(gc, color, factor, newAlpha) {
-    var r, g, b, alpha;
-
-    // translate color name to color spec
-    gc.fillStyle = color;
-    color = gc.fillStyle;
-    gc.fillStyle = gc.cache.fillStyle;
-
-    color = color.match(regexRGB);
-
-    alpha = color[8];
-
-    if (alpha) {
-        r = parseInt(color[5], 10);
-        g = parseInt(color[6], 10);
-        b = parseInt(color[7], 10);
-    } else {
-        r = parseInt(color[2], 16);
-        g = parseInt(color[3], 16);
-        b = parseInt(color[4], 16);
-    }
-
-    r = lighterComponent(r, factor);
-    g = lighterComponent(g, factor);
-    b = lighterComponent(b, factor);
-
-    if (newAlpha !== undefined) {
-        alpha = newAlpha;
-    }
-
-    return (
-        alpha !== undefined
-            ? 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')'
-            : '#' + toHex2(r) + toHex2(g) + toHex2(b)
-    );
-}
-
-function lighterComponent(n, factor) {
-    return n + (255 - n) * factor;
-}
-
-function toHex2(n) {
-    var x = Math.round(n).toString(16);
-    if (n < 0x10) { x = '0' + x; }
-    return x;
-}
-
-module.exports = {
+module.exports = groupedHeader = {
+    name: 'groupedHeader',
     install: installPlugin,
     decorateBackgroundWithBottomBorder: decorateBackgroundWithBottomBorder,
-    decorateBackgroundWithLinearGradient: decorateBackgroundWithLinearGradient,
-    lighterColor: lighterColor
+    decorateBackgroundWithLinearGradient: decorateBackgroundWithLinearGradient
 };
 
