@@ -364,6 +364,10 @@ function paintHeaderGroups(gc, config) {
                     left: bounds.x,
                     width: bounds.width
                 };
+                if (!this.columnHeaderLines && prevVisCol && groupCount > 1) {
+                    prevVisCol.top = rect.y;
+                    prevVisCol.bottom = rect.y + (groupCount - 1) * rect.height;
+                }
             } else {
                 widen = true;
             }
@@ -459,6 +463,18 @@ function paintHeaderGroups(gc, config) {
                 config.minWidth = minWidth;
             }
         });
+    }
+
+    if (!this.columnHeaderLines) {
+        var visCol = this.visibleColumns.find(function(visCol) {
+            return visCol.columnIndex === columnIndex;
+        });
+        if (groupCount === 1) {
+            delete visCol.bottom;
+            visCol.top = rect.y;
+        } else {
+            visCol.bottom = rect.y - rect.height;
+        }
     }
 
     this.groupCount = groupCount; // todo could go at bottom
@@ -579,4 +595,3 @@ module.exports = groupedHeader = {
     decorateBackgroundWithBottomBorder: decorateBackgroundWithBottomBorder,
     decorateBackgroundWithLinearGradient: decorateBackgroundWithLinearGradient
 };
-
