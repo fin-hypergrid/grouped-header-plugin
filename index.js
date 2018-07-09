@@ -334,6 +334,7 @@ function paintHeaderGroups(gc, config) {
         values = config.value.split(this.delimiter), // each group header including column header
         groupCount = values.length, // group header levels above column header
         rect = config.bounds,
+        bottom = rect.y + rect.height,
         bounds = Object.assign({}, rect), // save bounds for final column header render and resetting
         prevVisCol = this.visibleColumns.find(function(visCol) {
             return visCol.columnIndex === columnIndex - 1;
@@ -364,9 +365,8 @@ function paintHeaderGroups(gc, config) {
                     left: bounds.x,
                     width: bounds.width
                 };
-                if (!this.columnHeaderLines && prevVisCol && groupCount > 1) {
-                    prevVisCol.top = rect.y;
-                    prevVisCol.bottom = rect.y + (groupCount - 1) * rect.height;
+                if (prevVisCol && !this.columnHeaderLines && groupCount === 1) {
+                    prevVisCol.top = bottom;
                 }
             } else {
                 widen = true;
@@ -390,7 +390,7 @@ function paintHeaderGroups(gc, config) {
         if (widen) {
             node.width += config.gridLinesVWidth + bounds.width;
             if (prevVisCol) {
-                prevVisCol.top = y + rect.height;
+                prevVisCol.top = this.columnHeaderLines || g < groupCount - 2 ? y + rect.height : bottom;
             }
         }
 
@@ -463,18 +463,6 @@ function paintHeaderGroups(gc, config) {
                 config.minWidth = minWidth;
             }
         });
-    }
-
-    if (!this.columnHeaderLines) {
-        var visCol = this.visibleColumns.find(function(visCol) {
-            return visCol.columnIndex === columnIndex;
-        });
-        if (groupCount === 1) {
-            delete visCol.bottom;
-            visCol.top = rect.y;
-        } else {
-            visCol.bottom = rect.y - rect.height;
-        }
     }
 
     this.groupCount = groupCount; // todo could go at bottom
