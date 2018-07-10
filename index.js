@@ -219,6 +219,14 @@ function installPlugin(grid, options) {
     // Register the GroupedHeader cell renderer, which also instantiates it
     var cellRenderer = grid.cellRenderers.add(GroupedHeader);
 
+    // autosize the final column group tree
+    grid.addEventListener('fin-grid-rendered', function() {
+        if (cellRenderer.tree) {
+            autosizeTree(grid.behavior, cellRenderer.tree);
+            grid.checkColumnAutosizing();
+        }
+    });
+
     // Set instance variables from `options` object, overriding values in above prototype
     Object.assign(cellRenderer, options);
     delete cellRenderer.CellRenderer;
@@ -340,8 +348,6 @@ function paintHeaderGroups(gc, config) {
             return visCol.columnIndex === columnIndex - 1;
         });
 
-    this.tree = this.tree || {};
-
     // Always paint the group header background as we may be repainting it with increasing widths
     config.prefillColor = null;
 
@@ -359,6 +365,11 @@ function paintHeaderGroups(gc, config) {
                 this.groupCount !== groupCount ||
                 this.tree.value !== value
             ) {
+                // if we're autosizing all group levels, walk previously built tree, adjusting column widths as needed
+                if (columnIndex > 0 && this.tree && this.autosizeGroups) {
+                    autosizeTree(config.grid.behavior, this.tree)
+                }
+
                 node = this.tree = {
                     value: value,
                     children: [],
@@ -377,7 +388,7 @@ function paintHeaderGroups(gc, config) {
             node.value === value // and does it have same label as this column's?
         ) {
             widen = true; // same label, so just widen it
-        } else if (g !== 0) {
+        } else /*if (g !== 0)*/ {
             node = {
                 value: value,
                 children: [],
@@ -441,7 +452,7 @@ function paintHeaderGroups(gc, config) {
         config.value = node.value;
         paint.call(this, gc, config);
         node.minWidth = config.minWidth;
-        node.columnIndex = config.dataCell.x;
+        node.columnIndex = columnIndex;
 
         if (isGroupLabel) {
             if (paintBackground && paintBackground.overlay) {
@@ -449,20 +460,6 @@ function paintHeaderGroups(gc, config) {
             }
             Object.assign(config, stash);
         }
-    }
-
-    // if we're autosizing all group levels, walk the tree summing each subgroup and noting columns that need to be wider
-    if (this.autosizeGroups) {
-        var minWidths = []; // after walk, will contain (sparse) array of columns that need to be wider
-        walk(minWidths, this.tree);
-        minWidths.forEach(function(minWidth, i) {
-            if (i < columnIndex) {
-                // reset preferred width of previous columns
-                config.grid.behavior.getColumn(i).properties.preferredWidth = minWidth;
-            } else {
-                config.minWidth = minWidth;
-            }
-        });
     }
 
     this.groupCount = groupCount; // todo could go at bottom
@@ -480,27 +477,41 @@ function paintHeaderGroups(gc, config) {
     }
 }
 
-function walk(minWidths, node) {
-    var minWidth = Math.max(node.minWidth, node.children.reduce(function(sum, child) {
-            return sum + (child.children.length ? Math.max(child.minWidth, walk(minWidths, child)) : child.minWidth);
-        }, 0)),
-        avg = minWidth / node.children.length,
-        nonadjustables = node.children.filter(function(child) {
-            return !child.children.length && child.minWidth >= avg;
-        }),
-        nonadjWidthSum = nonadjustables.reduce(function(sum, child) {
-            return sum + child.minWidth;
-        }, 0),
-        adjustables = node.children.filter(function(child) {
-            return !child.children.length && child.minWidth < avg;
-        }),
-        adjWidthSum = minWidth - nonadjWidthSum;
+function autosizeTree(behavior, tree) {
+    if (tree.children.length) {
+        // walk tree to (1) factor preferredWidth into leaf nodes AND (2) widen superior nodes to accommodate children
+        tree.minWidth = Math.max(tree.minWidth, walkSuperior(behavior, tree));
 
-    adjustables.forEach(function(child) {
-        minWidths[child.columnIndex] = adjWidthSum / adjustables.length;
+        // walk tree to widen subordinate nodes to their parent's width
+        walkSubordinate(behavior, tree);
+    }
+}
+
+function walkSuperior(behavior, node) {
+    if (node.children.length) {
+        return node.children.reduce(function (sum, child) {
+            sum += child.minWidth = Math.max(child.minWidth, walkSuperior(behavior, child));
+            return sum;
+        }, 0);
+    } else {
+        return node.minWidth = Math.max(node.minWidth, behavior.getActiveColumn(node.columnIndex).properties.preferredWidth);
+    }
+}
+
+function walkSubordinate(behavior, node) {
+    var childrenWidth = node.children.reduce(function(sum, child) { return sum + child.minWidth; }, 0),
+        padding = (node.minWidth - childrenWidth) / node.children.length;
+
+    node.children.forEach(function(child) {
+        child.minWidth += padding;
+
+        if (child.children.length) {
+            walkSubordinate(behavior, child);
+        } else {
+            var column = behavior.getActiveColumn(child.columnIndex);
+            column.properties.preferredWidth = child.minWidth;
+        }
     });
-
-    return minWidth;
 }
 
 var regexRGBA = /^rgba|^transparent$/;
