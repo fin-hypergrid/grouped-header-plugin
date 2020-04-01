@@ -20,6 +20,7 @@ mkdir $VER
 mkdir $VER/build
 mv fin-*.js $VER/build
 sed 's/M\.m\.p/'$VER'/g' index.html > $VER/index.html
+cp demo.html $VER
 
 # Do a fetch + recreate local branch rather than a pull to accommodate first time when there is no local gh-pages branch yet
 git fetch origin gh-pages #2> /dev/null
@@ -28,8 +29,8 @@ git branch -D gh-pages #2> /dev/null
 git checkout -b gh-pages #2> /dev/null
 
 rm .gitignore .npmignore README.md LICENSE *.js *.sh *.json
-mv $VER/index.html .
-git add $VER index.html
+mv $VER/*.html .
+git add $VER *.html
 git status
 git commit -am $VER
 

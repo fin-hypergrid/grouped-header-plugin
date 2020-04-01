@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Grouped Header Plug-in Demo</title>
+	<script src="https://fin-hypergrid.github.io/core/3.3.2/build/fin-hypergrid.js"></script>
+	<script src="https://fin-hypergrid.github.io/grouped-header-plugin/1.2.4/build/fin-hypergrid-grouped-header-plugin.js"></script>
+	<script>
+window.onload = function() {
+  var grid = new fin.Hypergrid({ data: [
+    { symbol: 'APPL', name: 'Apple Inc.', prevClose: 93.13 },
+    { symbol: 'MSFT', name: 'Microsoft Corporation', prevClose: 51.91 },
+    { symbol: 'TSLA', name: 'Tesla Motors Inc.', prevClose: 196.40 },
+    { symbol: 'IBM', name: 'International Business Machines Corp', prevClose: 155.36 }
+  ] });
+
+  grid.installPlugins([
+    fin.Hypergrid.require('fin-hypergrid-grouped-header-plugin')
+  ]);
+
+  grid.behavior.setHeaders({
+    symbol: 'Stock|Symbol',
+    name: 'Stock|Company'
+  });
+}
+	</script>
+</head>
+<body>
+</body>
+</html>
