@@ -1,3 +1,4 @@
+(function(require,module,exports,Hypergrid){
 /* eslint-env browser */
 
 // NOTE: gulpfile.js's 'add-ons' task copies this file, altering the final line, to /demo/build/add-ons/, along with a minified version. Both files are eventually deployed to http://openfin.github.io/fin-hypergrid/add-ons/.
@@ -594,3 +595,6 @@ module.exports = groupedHeader = {
     decorateBackgroundWithBottomBorder: decorateBackgroundWithBottomBorder,
     decorateBackgroundWithLinearGradient: decorateBackgroundWithLinearGradient
 };
+})(fin.Hypergrid.require,fin.$={exports:{}},fin.$.exports,fin.Hypergrid);
+fin.Hypergrid.modules['fin-hypergrid-grouped-header-plugin']=fin.$.exports;
+delete fin.$;
